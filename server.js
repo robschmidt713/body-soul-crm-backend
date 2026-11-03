@@ -1,15 +1,14 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const DATA_FILE = path.join(__dirname, 'contacts.json');
 const PORT = process.env.PORT || 3000;
+const MONGODB_URI = process.env.MONGODB_URI || '';
 
 // Meta
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'bodyandsoul_crm_verify';
@@ -26,42 +25,66 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
   twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 }
 
-function loadContacts() {
+let db = null;
+let contactsCollection = null;
+
+async function connectDB() {
+  if (!MONGODB_URI) {
+    console.log('No MONGODB_URI set — running without database');
+    return;
+  }
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    }
-  } catch (e) {}
-  return [];
+    const client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db();
+    contactsCollection = db.collection('contacts');
+    console.log('Connected to MongoDB');
+  } catch (err) {
+    console.error('MongoDB connection failed:', err.message);
+  }
 }
 
-function saveContacts(contacts) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(contacts, null, 2));
+async function loadContacts() {
+  if (!contactsCollection) return [];
+  return await contactsCollection.find({}).toArray();
 }
 
-function findContactByPhone(phone) {
+async function saveContact(contact) {
+  if (!contactsCollection) return;
+  await contactsCollection.updateOne(
+    { id: contact.id },
+    { $set: contact },
+    { upsert: true }
+  );
+}
+
+async function deleteContactById(id) {
+  if (!contactsCollection) return;
+  await contactsCollection.deleteOne({ id });
+}
+
+function findContactByPhone(contacts, phone) {
   if (!phone) return null;
   const clean = phone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
-  const contacts = loadContacts();
   return contacts.find(c => {
     const cPhone = (c.phone || '').replace(/\s+/g, '').replace(/[^\d+]/g, '');
     if (!cPhone) return false;
-    return cPhone === clean || 
-           cPhone.endsWith(clean.slice(-9)) || 
+    return cPhone === clean ||
+           cPhone.endsWith(clean.slice(-9)) ||
            clean.endsWith(cPhone.slice(-9));
   });
 }
 
-app.get('/contacts', (req, res) => {
-  res.json(loadContacts());
+app.get('/contacts', async (req, res) => {
+  const contacts = await loadContacts();
+  res.json(contacts);
 });
 
-app.post('/contacts', (req, res) => {
-  const contacts = loadContacts();
+app.post('/contacts', async (req, res) => {
   const incoming = Array.isArray(req.body) ? req.body : [req.body];
   let added = 0;
 
-  incoming.forEach(c => {
+  for (const c of incoming) {
     if (!c.id) c.id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
     if (!c.createdAt) c.createdAt = new Date().toISOString();
     if (!c.stage) c.stage = 'New Lead';
@@ -70,36 +93,25 @@ app.post('/contacts', (req, res) => {
     if (!c.tags) c.tags = [];
     if (!c.messages) c.messages = [];
 
-    const exists = contacts.find(x =>
-      x.id === c.id ||
-      (c.email && x.email && x.email === c.email) ||
-      (c.phone && x.phone && x.phone === c.phone)
-    );
-    if (!exists) {
-      contacts.push(c);
-      added++;
-    } else {
-      Object.assign(exists, c);
-    }
-  });
+    await saveContact(c);
+    added++;
+  }
 
-  saveContacts(contacts);
-  res.json({ success: true, added, total: contacts.length });
+  const total = await contactsCollection.countDocuments();
+  res.json({ success: true, added, total });
 });
 
-app.put('/contacts/:id', (req, res) => {
-  const contacts = loadContacts();
-  const idx = contacts.findIndex(c => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  contacts[idx] = { ...contacts[idx], ...req.body, id: req.params.id };
-  saveContacts(contacts);
-  res.json(contacts[idx]);
+app.put('/contacts/:id', async (req, res) => {
+  const contacts = await loadContacts();
+  const existing = contacts.find(c => c.id === req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  const updated = { ...existing, ...req.body, id: req.params.id };
+  await saveContact(updated);
+  res.json(updated);
 });
 
-app.delete('/contacts/:id', (req, res) => {
-  let contacts = loadContacts();
-  contacts = contacts.filter(c => c.id !== req.params.id);
-  saveContacts(contacts);
+app.delete('/contacts/:id', async (req, res) => {
+  await deleteContactById(req.params.id);
   res.json({ success: true });
 });
 
@@ -113,10 +125,7 @@ app.post('/send', async (req, res) => {
 
   const toNumber = channel === 'whatsapp' && !to.startsWith('whatsapp:') ? `whatsapp:${to}` : to;
 
-  const messageParams = {
-    to: toNumber,
-    body
-  };
+  const messageParams = { to: toNumber, body };
 
   if (TWILIO_FROM_NUMBER.startsWith('MG')) {
     messageParams.messagingServiceSid = TWILIO_FROM_NUMBER;
@@ -129,8 +138,8 @@ app.post('/send', async (req, res) => {
   try {
     const message = await twilioClient.messages.create(messageParams);
 
-    const contacts = loadContacts();
-    const contact = contacts.find(c => c.id === contactId) || findContactByPhone(to);
+    const contacts = await loadContacts();
+    const contact = contacts.find(c => c.id === contactId) || findContactByPhone(contacts, to);
     if (contact) {
       if (!contact.messages) contact.messages = [];
       contact.messages.push({
@@ -141,7 +150,7 @@ app.post('/send', async (req, res) => {
         date: new Date().toISOString(),
         status: message.status
       });
-      saveContacts(contacts);
+      await saveContact(contact);
     }
 
     res.json({ success: true, sid: message.sid, status: message.status });
@@ -151,7 +160,7 @@ app.post('/send', async (req, res) => {
   }
 });
 
-app.post('/webhook/twilio', (req, res) => {
+app.post('/webhook/twilio', async (req, res) => {
   const from = req.body.From || '';
   const body = req.body.Body || '';
   const channel = from.startsWith('whatsapp:') ? 'whatsapp' : 'sms';
@@ -159,8 +168,8 @@ app.post('/webhook/twilio', (req, res) => {
 
   console.log('Inbound message from', cleanFrom, ':', body);
 
-  const contacts = loadContacts();
-  let contact = findContactByPhone(cleanFrom);
+  const contacts = await loadContacts();
+  let contact = findContactByPhone(contacts, cleanFrom);
 
   if (!contact) {
     console.log('No matching contact found for', cleanFrom, '- creating new');
@@ -176,7 +185,6 @@ app.post('/webhook/twilio', (req, res) => {
       messages: [],
       createdAt: new Date().toISOString()
     };
-    contacts.push(contact);
   } else {
     console.log('Matched to contact:', contact.firstName, contact.phone);
   }
@@ -190,7 +198,7 @@ app.post('/webhook/twilio', (req, res) => {
     from
   });
 
-  saveContacts(contacts);
+  await saveContact(contact);
   console.log('Saved inbound message. Contact now has', contact.messages.length, 'messages');
 
   res.set('Content-Type', 'text/xml');
@@ -265,11 +273,10 @@ app.post('/webhook/meta', async (req, res) => {
             }
           }
 
-          const contacts = loadContacts();
+          const contacts = await loadContacts();
           const exists = contacts.find(c => c.id === leadgenId);
           if (!exists) {
-            contacts.push(leadData);
-            saveContacts(contacts);
+            await saveContact(leadData);
             console.log('Saved new Meta lead:', leadData.firstName, leadData.email || leadData.phone);
           }
         }
@@ -280,17 +287,20 @@ app.post('/webhook/meta', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
+  const count = contactsCollection ? await contactsCollection.countDocuments() : 0;
   res.json({
     status: 'Body & Soul CRM Backend running',
-    contacts: loadContacts().length,
+    contacts: count,
     twilio: !!twilioClient,
+    mongodb: !!contactsCollection,
     webhook: '/webhook/meta',
     twilioWebhook: '/webhook/twilio'
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+  await connectDB();
   console.log(`CRM Backend listening on port ${PORT}`);
   console.log(`Meta verify token: ${VERIFY_TOKEN}`);
   console.log(`Page Access Token set: ${!!PAGE_ACCESS_TOKEN}`);
