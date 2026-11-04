@@ -222,31 +222,4 @@ app.post('/webhook/twilio', async (req, res) => {
 
   if (!contact.messages) contact.messages = [];
   contact.messages.push({
-    direction: 'inbound',
-    channel,
-    body,
-    date: new Date().toISOString(),
-    from
-  });
-
-  await saveContact(contact);
-  console.log('Saved inbound message. Contact now has', contact.messages.length, 'messages');
-
-  res.set('Content-Type', 'text/xml');
-  res.send('<Response></Response>');
-});
-
-app.get('/webhook/meta', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log('Meta webhook verified');
-    return res.status(200).send(challenge);
-  }
-  res.sendStatus(403);
-});
-
-app.post('/webhook/meta', async (req, res) => {
-  res.status(200).send('EVENT_RECEIVED');
+    direction: 
