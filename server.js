@@ -19,6 +19,10 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || '';
 
+// Email
+const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'admin@bodyandsoulchiro.au';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+
 let twilioClient = null;
 if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
   const twilio = require('twilio');
@@ -76,6 +80,32 @@ function findContactByPhone(contacts, phone) {
   });
 }
 
+async function sendLeadEmail(lead) {
+  if (!RESEND_API_KEY) {
+    console.log('No RESEND_API_KEY — skipping email');
+    return;
+  }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'CRM <onboarding@resend.dev>',
+        to: NOTIFY_EMAIL,
+        subject: `New lead: ${lead.firstName || 'Unknown'} ${lead.lastName || ''}`.trim(),
+        text: `New lead from ${lead.source}\n\nName: ${lead.firstName || ''} ${lead.lastName || ''}\nPhone: ${lead.phone || '-'}\nEmail: ${lead.email || '-'}\nCondition: ${lead.condition || '-'}\n\nView in CRM.`
+      })
+    });
+    if (res.ok) console.log('Lead email sent');
+    else console.error('Email failed:', await res.text());
+  } catch (err) {
+    console.error('Email error:', err.message);
+  }
+}
+
 app.get('/contacts', async (req, res) => {
   const contacts = await loadContacts();
   res.json(contacts);
@@ -98,7 +128,7 @@ app.post('/contacts', async (req, res) => {
     added++;
   }
 
-  const total = await contactsCollection.countDocuments();
+  const total = contactsCollection ? await contactsCollection.countDocuments() : 0;
   res.json({ success: true, added, total });
 });
 
@@ -220,90 +250,3 @@ app.get('/webhook/meta', (req, res) => {
 
 app.post('/webhook/meta', async (req, res) => {
   res.status(200).send('EVENT_RECEIVED');
-
-  try {
-    const body = req.body;
-    if (body.object !== 'page') return;
-
-    for (const entry of body.entry || []) {
-      for (const change of entry.changes || []) {
-        if (change.field === 'leadgen') {
-          const leadgenId = change.value.leadgen_id;
-          const formId = change.value.form_id;
-          const createdTime = change.value.created_time;
-
-          console.log('New Meta lead:', leadgenId);
-
-          let leadData = {
-            id: leadgenId,
-            source: 'Facebook / Meta',
-            stage: 'New Lead',
-            tags: ['ad-lead', 'meta'],
-            notes: [{ date: new Date().toISOString(), text: `Lead from Meta form ${formId}` }],
-            messages: [],
-            createdAt: new Date(createdTime * 1000).toISOString(),
-            firstName: '',
-            lastName: '',
-            email: '',
-            phone: '',
-            condition: ''
-          };
-
-          if (PAGE_ACCESS_TOKEN) {
-            try {
-              const url = `https://graph.facebook.com/v21.0/${leadgenId}?access_token=${PAGE_ACCESS_TOKEN}`;
-              const response = await fetch(url);
-              const data = await response.json();
-
-              if (data.field_data) {
-                const fields = {};
-                data.field_data.forEach(f => {
-                  fields[f.name] = (f.values && f.values[0]) || '';
-                });
-
-                const fullName = fields.full_name || fields.name || '';
-                const nameParts = fullName.trim().split(' ');
-                leadData.firstName = nameParts[0] || fields.first_name || '';
-                leadData.lastName = nameParts.slice(1).join(' ') || fields.last_name || '';
-                leadData.email = fields.email || '';
-                leadData.phone = fields.phone_number || fields.phone || '';
-                leadData.condition = fields.condition || fields.message || fields.comments || '';
-              }
-            } catch (err) {
-              console.error('Failed to fetch lead details:', err.message);
-            }
-          }
-
-          const contacts = await loadContacts();
-          const exists = contacts.find(c => c.id === leadgenId);
-          if (!exists) {
-            await saveContact(leadData);
-            console.log('Saved new Meta lead:', leadData.firstName, leadData.email || leadData.phone);
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error('Webhook error:', err);
-  }
-});
-
-app.get('/', async (req, res) => {
-  const count = contactsCollection ? await contactsCollection.countDocuments() : 0;
-  res.json({
-    status: 'Body & Soul CRM Backend running',
-    contacts: count,
-    twilio: !!twilioClient,
-    mongodb: !!contactsCollection,
-    webhook: '/webhook/meta',
-    twilioWebhook: '/webhook/twilio'
-  });
-});
-
-app.listen(PORT, async () => {
-  await connectDB();
-  console.log(`CRM Backend listening on port ${PORT}`);
-  console.log(`Meta verify token: ${VERIFY_TOKEN}`);
-  console.log(`Page Access Token set: ${!!PAGE_ACCESS_TOKEN}`);
-  console.log(`Twilio configured: ${!!twilioClient}`);
-});
