@@ -51,9 +51,10 @@ async function loadContacts() {
 
 async function saveContact(contact) {
   if (!contactsCollection) return;
+  const { _id, ...contactWithoutId } = contact;
   await contactsCollection.updateOne(
     { id: contact.id },
-    { $set: contact },
+    { $set: contactWithoutId },
     { upsert: true }
   );
 }
