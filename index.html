@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Body & Soul CRM</title>
+<style>
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --surface2: #243044;
+  --border: #2d3a4f;
+  --text: #e8eef7;
+  --muted: #8b9bb4;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; }
+.sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px 0; flex-shrink: 0; }
+.logo { padding: 0 20px 24px; font-size: 1.1rem; font-weight: 700; color: #fbbf24; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; cursor: pointer; color: var(--muted); transition: 0.15s; }
+.nav-item:hover, .nav-item.active { background: var(--surface2); color: var(--text); }
+.main { flex: 1; overflow-y: auto; padding: 24px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+h1 { font-size: 1.6rem; }
+.btn { background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+.btn:hover { background: var(--accent-hover); }
+.btn-secondary { background: var(--surface2); }
+.btn-danger { background: var(--danger); }
+.btn-success { background: var(--success); }
+.btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.stat-card .label { color: var(--muted); font-size: 0.8rem; }
+.stat-card .value { font-size: 1.8rem; font-weight: 700; margin-top: 4px; }
+.filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+input, select, textarea { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 0.9rem; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; }
+th { text-align: left; padding: 12px 16px; background: var(--surface2); color: var(--muted); font-weight: 500; font-size: 0.85rem; }
+td { padding: 12px 16px; border-top: 1px solid var(--border); }
+tr:hover td { background: var(--surface2); }
+.tag { display: inline-block; background: var(--surface2); padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; margin-right: 4px; }
+.stage-badge { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+.pipeline { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 16px; }
+.pipeline-col { min-width: 260px; background: var(--surface); border-radius: 10px; padding: 12px; }
+.pipeline-col h3 { font-size: 0.9rem; margin-bottom: 12px; display: flex; justify-content: space-between; }
+.pipeline-count { background: var(--surface2); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
+.pipeline-card { background: var(--surface2); border-radius: 8px; padding: 12px; margin-bottom: 8px; cursor: grab; }
+.pipeline-card:active { cursor: grabbing; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border-radius: 12px; padding: 24px; width: 90%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group.full { grid-column: 1 / -1; }
+label { font-size: 0.8rem; color: var(--muted); }
+.actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.notes { background: var(--surface2); border-radius: 8px; padding: 12px; margin-top: 12px; max-height: 160px; overflow-y: auto; }
+.note-item { font-size: 0.85rem; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.note-item .date { color: var(--muted); font-size: 0.75rem; }
+.empty { text-align: center; color: var(--muted); padding: 40px; }
+.view { display: none; }
+.view.active { display: block; }
+.template-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.template-box textarea { width: 100%; min-height: 100px; resize: vertical; }
+.msg-actions { display: flex; gap: 8px; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="logo">Body & Soul CRM</div>
+    <div class="nav-item active" data-view="dashboard">📊 Dashboard</div>
+    <div class="nav-item" data-view="contacts">👥 Contacts</div>
+    <div class="nav-item" data-view="pipeline">📋 Pipeline</div>
+    <div class="nav-item" data-view="messages">💬 Messages</div>
+    <div class="nav-item" data-view="settings">⚙️ Settings</div>
+  </aside>
+  <main class="main">
+    <section id="dashboard" class="view active">
+      <div class="header"><h1>Dashboard</h1></div>
+      <div class="stats" id="stats"></div>
+      <div class="stat-card"><h3 style="margin-bottom:12px">Recent Contacts</h3><div id="recentList"></div></div>
+    </section>
+
+    <section id="contacts" class="view">
+      <div class="header">
+        <h1>Contacts</h1>
+        <button class="btn" id="addContactBtn">+ Add Contact</button>
+      </div>
+      <div class="filters">
+        <input id="searchInput" placeholder="Search name, phone, email..." style="flex:1;min-width:200px">
+        <select id="stageFilter"><option value="">All Stages</option></select>
+      </div>
+      <div id="contactsTable"></div>
+    </section>
+
+    <section id="pipeline" class="view">
+      <div class="header">
+        <h1>Pipeline</h1>
+        <button class="btn" id="addFromPipeline">+ Add Contact</button>
+      </div>
+      <div class="pipeline" id="pipelineBoard"></div>
+    </section>
+
+    <section id="messages" class="view">
+      <div class="header"><h1>Messages</h1></div>
+      <div id="conversationsList"></div>
+    </section>
+
+    <section id="settings" class="view">
+      <div class="header"><h1>Settings</h1></div>
+      <div class="stat-card" style="max-width:560px;">
+        <p>All data is stored in the cloud database. Contacts and messages persist across all clinic computers.</p>
+        <div class="form-group" style="margin:16px 0;">
+          <label>Backend URL</label>
+          <input id="backendUrl" placeholder="https://your-crm-backend.onrender.com" style="width:100%;">
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin:16px 0;">
+          <input type="checkbox" id="autoPromptLeads" checked style="width:auto;">
+          Auto-prompt to message new Meta / Google ad leads
+        </label>
+
+        <h3 style="margin-top:24px">Welcome Message Templates</h3>
+        <p style="color:var(--muted);font-size:0.9rem;margin-bottom:12px;">Use {firstName} to personalise.</p>
+        <div class="template-box">
+          <label>SMS Welcome Message</label>
+          <textarea id="templateSMS" rows="4"></textarea>
+        </div>
+        <div class="template-box">
+          <label>Email Subject</label>
+          <input id="templateEmailSubject">
+        </div>
+        <div class="template-box">
+          <label>Email Body</label>
+          <textarea id="templateEmailBody" rows="5"></textarea>
+        </div>
+        <button class="btn" id="saveTemplates" style="margin-bottom:20px">Save Templates</button>
+
+        <div class="actions" style="justify-content:flex-start;">
+          <button class="btn btn-secondary" id="exportBtn">Export JSON</button>
+          <button class="btn btn-secondary" id="importBtn">Import JSON</button>
+          <input type="file" id="importFile" accept=".json" class="hidden">
+          <button class="btn btn-danger" id="clearBtn">Clear All Data</button>
+          <button class="btn" id="loadSample">Load Sample Data</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Contact Modal -->
+  <div class="modal-overlay" id="contactModal">
+    <div class="modal">
+      <h2 id="modalTitle">New Contact</h2>
+      <form id="contactForm">
+        <input type="hidden" id="contactId">
+        <div class="form-row">
+          <div class="form-group"><label>First Name *</label><input id="firstName" required></div>
+          <div class="form-group"><label>Last Name</label><input id="lastName"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Email</label><input type="email" id="email"></div>
+          <div class="form-group"><label>Phone</label><input id="phone" placeholder="e.g. 0412 345 678"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Source</label>
+            <select id="source">
+              <option>Google Ads</option>
+              <option>Facebook / Meta</option>
+              <option>Instagram</option>
+              <option>Referral</option>
+              <option>Walk-in</option>
+              <option>Website</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Stage</label><select id="stage"></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Opportunity Value ($)</label><input type="number" id="value" min="0" step="1" value="0"></div>
+          <div class="form-group"><label>Last Visit</label><input type="date" id="lastVisit"></div>
+        </div>
+        <div class="form-group full"><label>Condition / Notes summary</label><input id="condition" placeholder="e.g. Lower back pain, decompression candidate"></div>
+        <div class="form-group full"><label>Tags (comma separated)</label><input id="tags" placeholder="decompression, new, ad-lead"></div>
+        <div class="form-group full">
+          <label>Activity / Notes</label>
+          <div class="notes" id="notesList"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <textarea id="newNote" rows="2" placeholder="Add a note..." style="flex:1;"></textarea>
+            <button type="button" class="btn btn-sm" id="addNoteBtn" style="align-self:flex-end;">Add Note</button>
+          </div>
+        </div>
+        <div id="messageButtons" class="msg-actions hidden">
+          <button type="button" class="btn btn-success btn-sm" onclick="sendMessage('whatsapp')">Send WhatsApp</button>
+          <button type="button" class="btn btn-sm" onclick="sendMessage('sms')">Send SMS</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="sendMessage('email')">Send Email</button>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn btn-secondary" id="cancelModal">Cancel</button>
+          <button type="submit" class="btn">Save Contact</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+<script>
+const STAGES = [
+  'New Lead',
+  'Consultation Booked',
+  'Assessment Complete',
+  'Active Care',
+  'Decompression / Treatment',
+  'Maintenance',
+  'Lost'
+];
+
+const AD_SOURCES = ['Google Ads', 'Facebook / Meta', 'Instagram', 'Meta'];
+
+const STORAGE_KEY = 'bodySoulCRM_v1';
+const TEMPLATE_KEY = 'bodySoulCRM_templates';
+const SETTINGS_KEY = 'bodySoulCRM_settings';
+
+let contacts = [];
+let templates = {
+  sms: "Hi {firstName}, thanks for your interest in Body & Soul Chiropractic! I'm Dr Rob. We help people with back, neck and spinal issues using gentle chiropractic and decompression. Would you like to book a free initial consultation? Reply YES or call us on 3608 8814.",
+  emailSubject: "Your enquiry with Body & Soul Chiropractic",
+  emailBody: "Hi {firstName},\n\nThanks for reaching out via our ad. I'm Dr Rob Schmidt from Body & Soul Chiropractic in Brighton.\n\nWe specialise in helping people with spinal issues, back pain and decompression therapy.\n\nWould you like to book a complimentary consultation so we can see how we can help?\n\nReply to this email or call 3608 8814.\n\nWarm regards,\nDr Rob Schmidt\nBody & Soul Chiropractic"
+};
+let settings = { autoPromptLeads: true, backendUrl: 'https://body-soul-crm-backend.onrender.com' };
+let currentView = 'dashboard';
+let pendingContact = null;
+let syncInterval = null;
+
+function init() {
+  loadData();
+  loadTemplates();
+  loadSettings();
+  renderNav();
+  setupEvents();
+  renderTemplatesUI();
+  startBackendSync();
+}
+
+async function startBackendSync() {
+  await syncFromBackend();
+  if (syncInterval) clearInterval(syncInterval);
+  syncInterval = setInterval(async () => {
+    await syncFromBackend();
+    if (currentView === 'messages') renderConversations();
+  }, 8000);
+}
+
+async function syncFromBackend() {
+  if (!settings.backendUrl) return;
+  try {
+    const res = await fetch(settings.backendUrl + '/contacts');
+    if (!res.ok) return;
+    const remote = await res.json();
+    contacts = remote;
+    renderAll();
+  } catch (err) {
+    console.warn('Sync failed:', err.message);
+  }
+}
+
+async function saveContactToBackend(contact) {
+  if (!settings.backendUrl) {
+    saveData();
+    return;
+  }
+  try {
+    const res = await fetch(settings.backendUrl + '/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(contact)
+    });
+    if (res.ok) {
+      await syncFromBackend();
+    } else {
+      console.error('Save failed:', await res.text());
+      saveData();
+    }
+  } catch (err) {
+    console.error('Save failed:', err);
+    saveData();
+  }
+}
+
+async function deleteContactFromBackend(id) {
+  if (!settings.backendUrl) return;
+  try {
+    await fetch(`${settings.backendUrl}/contacts/${id}`, { method: 'DELETE' });
+    await syncFromBackend();
+  } catch (err) {
+    console.error('Delete failed:', err);
+  }
+}
+
+function loadData() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) contacts = JSON.parse(saved);
+}
+
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts));
+}
+
+function loadTemplates() {
+  const saved = localStorage.getItem(TEMPLATE_KEY);
+  if (saved) templates = { ...templates, ...JSON.parse(saved) };
+}
+function saveTemplates() { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates)); }
+
+function loadSettings() {
+  const saved = localStorage.getItem(SETTINGS_KEY);
+  if (saved) settings = { ...settings, ...JSON.parse(saved) };
+}
+function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
+function getSampleData() {
+  return [
+    { id: '1', firstName: 'Sarah', lastName: 'Mitchell', email: 'sarah.m@example.com', phone: '0412345678', source: 'Google Ads', stage: 'New Lead', value: 850, condition: 'Chronic lower back pain', tags: ['decompression', 'ad-lead'], notes: [], messages: [], lastVisit: '', createdAt: new Date().toISOString() },
+    { id: '2', firstName: 'James', lastName: 'Chen', email: 'james.chen@email.com', phone: '0423987654', source: 'Referral', stage: 'Active Care', value: 2400, condition: 'Sciatica', tags: ['active'], notes: [{date: new Date(Date.now()-86400000*5).toISOString(), text: 'Responding well.'}], messages: [], lastVisit: new Date(Date.now()-86400000*3).toISOString().split('T')[0], createdAt: new Date(Date.now()-86400000*20).toISOString() }
+  ];
+}
+
+function renderNav() {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === currentView);
+  });
+  document.querySelectorAll('.view').forEach(v => {
+    v.classList.toggle('active', v.id === currentView);
+  });
+}
+
+function renderConversations() {
+  const withMessages = contacts.filter(c => c.messages && c.messages.length > 0)
+    .sort((a, b) => {
+      const aLast = a.messages[a.messages.length - 1]?.date || '';
+      const bLast = b.messages[b.messages.length - 1]?.date || '';
+      return bLast.localeCompare(aLast);
+    });
+
+  const el = document.getElementById('conversationsList');
+  if (!withMessages.length) {
+    el.innerHTML = '<div class="empty">No conversations yet</div>';
+    return;
+  }
+
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Contact</th><th>Last Message</th><th>Time</th><th></th></tr></thead>
+      <tbody>
+        ${withMessages.map(c => {
+          const last = c.messages[c.messages.length - 1];
+          const hasUnread = last.direction === 'inbound';
+          return `
+            <tr style="${hasUnread ? 'background:#1a3a2a;border-left:3px solid #4ade80' : ''}">
+              <td><strong>${c.firstName} ${c.lastName}</strong>${hasUnread ? ' <span style="color:#4ade80;font-size:0.75rem">● New</span>' : ''}<br><small>${c.phone || ''}</small></td>
+              <td>${last.body.slice(0, 60)}${last.body.length > 60 ? '...' : ''}</td>
+              <td>${new Date(last.date).toLocaleString()}</td>
+              <td><button class="btn btn-sm" onclick="openConversation('${c.id}')">Open</button></td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderAll() {
+  renderDashboard();
+  renderContacts();
+  renderPipeline();
+  renderConversations();
+  populateStageSelects();
+}
+
+function renderDashboard() {
+  const total = contacts.length;
+  const totalValue = contacts.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
+  const byStage = {};
+  STAGES.forEach(s => byStage[s] = 0);
+  contacts.forEach(c => { if (byStage[c.stage] !== undefined) byStage[c.stage]++; });
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="label">Total Contacts</div><div class="value">${total}</div></div>
+    <div class="stat-card"><div class="label">Pipeline Value</div><div class="value">$${totalValue.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="label">Active Care</div><div class="value">${(byStage['Active Care'] || 0) + (byStage['Decompression / Treatment'] || 0)}</div></div>
+    <div class="stat-card"><div class="label">New Leads</div><div class="value">${byStage['New Lead'] || 0}</div></div>
+  `;
+
+  const recent = [...contacts].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+  document.getElementById('recentList').innerHTML = recent.length ? `
+    <table><thead><tr><th>Name</th><th>Stage</th><th>Source</th></tr></thead>
+    <tbody>${recent.map(c => `<tr><td>${c.firstName} ${c.lastName}</td><td>${c.stage}</td><td>${c.source}</td></tr>`).join('')}</tbody></table>
+  ` : '<div class="empty">No contacts yet</div>';
+}
+
+function renderContacts() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const stageF = document.getElementById('stageFilter').value;
+  const filtered = contacts.filter(c => {
+    const text = `${c.firstName} ${c.lastName} ${c.email} ${c.phone}`.toLowerCase();
+    return (!search || text.includes(search)) && (!stageF || c.stage === stageF);
+  });
+
+  const el = document.getElementById('contactsTable');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty">No contacts found</div>';
+    return;
+  }
+
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Name</th><th>Phone / Email</th><th>Stage</th><th>Source</th><th>Tags</th><th></th></tr></thead>
+      <tbody>
+        ${filtered.map(c => `
+          <tr>
+            <td><strong>${c.firstName} ${c.lastName}</strong></td>
+            <td>${c.phone || ''}<br><small>${c.email || ''}</small></td>
+            <td><span class="stage-badge">${c.stage}</span></td>
+            <td>${c.source}</td>
+            <td>${(c.tags||[]).map(t => `<span class="tag">${t}</span>`).join('')}</td>
+            <td>
+              <button class="btn btn-sm btn-secondary" onclick="editContact('${c.id}')">Edit</button>
+              <button class="btn btn-sm" onclick="quickSend('${c.id}', 'sms')">SMS</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteContact('${c.id}')">Del</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderPipeline() {
+  const board = document.getElementById('pipelineBoard');
+  board.innerHTML = STAGES.map(stage => {
+    const items = contacts.filter(c => c.stage === stage);
+    return `
+      <div class="pipeline-col" ondragover="event.preventDefault()" ondrop="dropContact(event, '${stage}')">
+        <h3>${stage} <span class="pipeline-count">${items.length}</span></h3>
+        ${items.map(c => `
+          <div class="pipeline-card" draggable="true" ondragstart="dragContact(event, '${c.id}')" onclick="editContact('${c.id}')">
+            <strong>${c.firstName} ${c.lastName}</strong>
+            <div style="font-size:0.8rem;color:var(--muted);margin-top:4px">$${c.value || 0} • ${c.source}</div>
+          </div>
+        `).join('') || '<div style="color:var(--muted);font-size:0.85rem;padding:8px">Empty</div>'}
+      </div>
+    `;
+  }).join('');
+}
+
+function dragContact(event, id) {
+  event.dataTransfer.setData('text/plain', id);
+}
+
+function dropContact(event, newStage) {
+  event.preventDefault();
+  const id = event.dataTransfer.getData('text/plain');
+  const c = contacts.find(x => x.id === id);
+  if (c && c.stage !== newStage) {
+    c.stage = newStage;
+    saveData();
+    saveContactToBackend(c).then(() => {
+      setTimeout(() => renderPipeline(), 500);
+    });
+    renderPipeline();
+  }
+}
+
+function populateStageSelects() {
+  const opts = STAGES.map(s => 
