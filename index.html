@@ -210,11 +210,10 @@ label { font-size: 0.8rem; color: var(--muted); }
 <script>
 const STAGES = [
   'New Lead',
+  '1st Contact',
+  '2nd Contact',
   'Consultation Booked',
-  'Assessment Complete',
-  'Active Care',
-  'Decompression / Treatment',
-  'Maintenance',
+  'Patient Showed Up',
   'Lost'
 ];
 
@@ -335,6 +334,13 @@ function renderNav() {
   document.querySelectorAll('.view').forEach(v => {
     v.classList.toggle('active', v.id === currentView);
   });
+
+  const hasUnread = contacts.some(c => c.messages && c.messages.length && c.messages[c.messages.length - 1].direction === 'inbound');
+  const msgNav = document.querySelector('.nav-item[data-view="messages"]');
+  if (msgNav) {
+    msgNav.style.background = hasUnread ? '#1a3a2a' : '';
+    msgNav.style.color = hasUnread ? '#4ade80' : '';
+  }
 }
 
 function renderConversations() {
