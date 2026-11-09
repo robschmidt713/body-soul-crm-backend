@@ -423,7 +423,7 @@ function renderContacts() {
 
   el.innerHTML = `
     <table>
-      <thead><tr><th>Name</th><th>Phone / Email</th><th>Stage</th><th>Source</th><th>Tags</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Phone / Email</th><th>Stage</th><th>Source</th><th>Created</th><th>Tags</th><th></th></tr></thead>
       <tbody>
         ${filtered.map(c => `
           <tr>
@@ -431,6 +431,7 @@ function renderContacts() {
             <td>${c.phone || ''}<br><small>${c.email || ''}</small></td>
             <td><span class="stage-badge">${c.stage}</span></td>
             <td>${c.source}</td>
+            <td><small>${c.createdAt ? new Date(c.createdAt).toLocaleString() : '-'}</small></td>
             <td>${(c.tags||[]).map(t => `<span class="tag">${t}</span>`).join('')}</td>
             <td>
               <button class="btn btn-sm btn-secondary" onclick="editContact('${c.id}')">Edit</button>
@@ -455,6 +456,7 @@ function renderPipeline() {
           <div class="pipeline-card" draggable="true" ondragstart="dragContact(event, '${c.id}')" onclick="editContact('${c.id}')">
             <strong>${c.firstName} ${c.lastName}</strong>
             <div style="font-size:0.8rem;color:var(--muted);margin-top:4px">$${c.value || 0} • ${c.source}</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">${c.createdAt ? new Date(c.createdAt).toLocaleString() : ''}</div>
           </div>
         `).join('') || '<div style="color:var(--muted);font-size:0.85rem;padding:8px">Empty</div>'}
       </div>
