@@ -1,12 +1,54 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const twilio = require('twilio');
 const { MongoClient } = require('mongodb');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: true,
+  allowedHeaders: ['Content-Type', 'x-crm-key', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+function extractCrmKey(req) {
+  const headerKey = req.get('x-crm-key');
+  if (headerKey) return headerKey;
+  const auth = req.get('authorization') || '';
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : '';
+}
+
+function crmKeyMatches(provided) {
+  const expected = process.env.CRM_PASSWORD;
+  if (!expected) return null;
+  const given = typeof provided === 'string' ? provided : '';
+  const a = crypto.createHash('sha256').update(expected, 'utf8').digest();
+  const b = crypto.createHash('sha256').update(given, 'utf8').digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+function isPublicRoute(req) {
+  if (req.method === 'OPTIONS') return true;
+  const path = req.path;
+  if (req.method === 'GET' && path === '/') return true;
+  if (path === '/webhook/meta' && (req.method === 'GET' || req.method === 'POST')) return true;
+  if (path === '/webhook/sms' && req.method === 'POST') return true;
+  return false;
+}
+
+app.use((req, res, next) => {
+  if (isPublicRoute(req)) return next();
+  if (!process.env.CRM_PASSWORD) {
+    return res.status(503).json({ error: 'CRM password not configured' });
+  }
+  if (!crmKeyMatches(extractCrmKey(req))) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+});
 
 const PORT = process.env.PORT || 3000;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
@@ -90,6 +132,10 @@ async function sendLeadEmail(lead) {
 
 app.get('/', (req, res) => {
   res.json({ status: 'Body & Soul CRM backend running' });
+});
+
+app.post('/auth/check', (req, res) => {
+  res.json({ ok: true });
 });
 
 app.get('/contacts', async (req, res) => {

@@ -120,6 +120,9 @@ label { font-size: 0.8rem; color: var(--muted); }
           <label>Backend URL</label>
           <input id="backendUrl" placeholder="https://your-crm-backend.onrender.com" style="width:100%;">
         </div>
+        <div class="form-group" style="margin:16px 0;">
+          <button type="button" class="btn btn-secondary" id="logoutBtn">Log out</button>
+        </div>
         <label style="display:flex;align-items:center;gap:8px;margin:16px 0;">
           <input type="checkbox" id="autoPromptLeads" checked style="width:auto;">
           Auto-prompt to message new Meta / Google ad leads
@@ -207,6 +210,20 @@ label { font-size: 0.8rem; color: var(--muted); }
     </div>
   </div>
 
+
+  <div id="loginOverlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:500;align-items:center;justify-content:center;">
+    <form id="loginForm" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:32px;width:90%;max-width:360px;">
+      <h2 style="margin-bottom:8px;">Body & Soul CRM</h2>
+      <p style="color:var(--muted);font-size:0.9rem;margin-bottom:20px;">Enter the clinic password to continue.</p>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" autocomplete="current-password" required style="width:100%;">
+      </div>
+      <p id="loginError" style="color:var(--danger);font-size:0.85rem;margin:8px 0 12px;display:none;"></p>
+      <button class="btn" type="submit" style="width:100%;">Log in</button>
+    </form>
+  </div>
+
 <script>
 const STAGES = [
   'New Lead',
@@ -234,6 +251,51 @@ let currentView = 'dashboard';
 let pendingContact = null;
 let syncInterval = null;
 
+const KEY_STORAGE = 'bodySoulCRM_key';
+
+function getCrmKey() {
+  return localStorage.getItem(KEY_STORAGE) || '';
+}
+
+function setCrmKey(key) {
+  if (key) localStorage.setItem(KEY_STORAGE, key);
+  else localStorage.removeItem(KEY_STORAGE);
+}
+
+function showLogin(message) {
+  const overlay = document.getElementById('loginOverlay');
+  overlay.style.display = 'flex';
+  const err = document.getElementById('loginError');
+  if (message) {
+    err.textContent = message;
+    err.style.display = 'block';
+  } else {
+    err.style.display = 'none';
+  }
+  const input = document.getElementById('loginPassword');
+  input.value = '';
+  setTimeout(() => input.focus(), 50);
+}
+
+function hideLogin() {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
+}
+
+async function apiFetch(path, options = {}) {
+  const headers = Object.assign({}, options.headers || {});
+  const key = getCrmKey();
+  if (key) headers['x-crm-key'] = key;
+  const res = await fetch((settings.backendUrl || '') + path, { ...options, headers });
+  if (res.status === 401) {
+    setCrmKey('');
+    if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
+    showLogin('Session expired. Please log in again.');
+    throw new Error('Unauthorized');
+  }
+  return res;
+}
+
 function init() {
   loadData();
   loadTemplates();
@@ -241,7 +303,8 @@ function init() {
   renderNav();
   setupEvents();
   renderTemplatesUI();
-  startBackendSync();
+  if (!getCrmKey()) showLogin();
+  else startBackendSync();
 }
 
 async function startBackendSync() {
@@ -256,7 +319,7 @@ async function startBackendSync() {
 async function syncFromBackend() {
   if (!settings.backendUrl) return;
   try {
-    const res = await fetch(settings.backendUrl + '/contacts');
+    const res = await apiFetch('/contacts');
     if (!res.ok) return;
     const remote = await res.json();
     contacts = remote;
@@ -272,7 +335,7 @@ async function saveContactToBackend(contact) {
     return;
   }
   try {
-    const res = await fetch(settings.backendUrl + '/contacts', {
+    const res = await apiFetch('/contacts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(contact)
@@ -292,7 +355,7 @@ async function saveContactToBackend(contact) {
 async function deleteContactFromBackend(id) {
   if (!settings.backendUrl) return;
   try {
-    await fetch(`${settings.backendUrl}/contacts/${id}`, { method: 'DELETE' });
+    await apiFetch('/contacts/' + id, { method: 'DELETE' });
     await syncFromBackend();
   } catch (err) {
     console.error('Delete failed:', err);
@@ -565,7 +628,7 @@ async function sendMessage(type, contact = null) {
     if (!settings.backendUrl) return alert('Set Backend URL in Settings first');
 
     try {
-      const res = await fetch(settings.backendUrl + '/send', {
+      const res = await apiFetch('/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -656,7 +719,7 @@ async function sendReply(contactId) {
 
   input.disabled = true;
   try {
-    const res = await fetch(settings.backendUrl + '/send', {
+    const res = await apiFetch('/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contactId, to: cleanPhone(c.phone), body: text, channel: 'sms' })
@@ -795,9 +858,48 @@ function setupEvents() {
     backendUrlInput.onchange = e => {
       settings.backendUrl = e.target.value.trim().replace(/\/$/, '');
       saveSettings();
-      startBackendSync();
+      if (getCrmKey()) startBackendSync();
     };
   }
+
+  document.getElementById('logoutBtn').onclick = () => {
+    setCrmKey('');
+    if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
+    showLogin();
+  };
+
+  document.getElementById('loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const key = document.getElementById('loginPassword').value;
+    if (!key) return;
+    if (!settings.backendUrl) {
+      showLogin('Set the Backend URL in Settings first.');
+      return;
+    }
+    try {
+      const res = await fetch(settings.backendUrl + '/auth/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-crm-key': key }
+      });
+      if (res.status === 401) {
+        showLogin('Incorrect password.');
+        return;
+      }
+      if (res.status === 503) {
+        showLogin('CRM password is not configured on the server.');
+        return;
+      }
+      if (!res.ok) {
+        showLogin('Could not sign in. Please try again.');
+        return;
+      }
+      setCrmKey(key);
+      hideLogin();
+      startBackendSync();
+    } catch (err) {
+      showLogin('Could not reach the server. Please try again.');
+    }
+  };
 
   document.getElementById('exportBtn').onclick = () => {
     const blob = new Blob([JSON.stringify({contacts, templates, settings}, null, 2)], {type: 'application/json'});
