@@ -224,7 +224,7 @@ app.post('/webhook/meta', async (req, res) => {
                 const name = field.name?.toLowerCase() || '';
                 const value = field.values?.[0] || '';
                 if (name.includes('first') || name === 'full_name') leadData.firstName = value.split(' ')[0];
-                if (name.includes('last') || name === 'full_name') leadData.lastName = value.split(' ').slice(1).join(' ') || leadData.lastName;
+                if (name.includes('last') || name === 'full_name') leadData.lastName = value.split(' ').slice(1).join(' ') || leadData.lastName || '';
                 if (name.includes('email')) leadData.email = value;
                 if (name.includes('phone')) leadData.phone = value;
                 if (name.includes('condition') || name.includes('message') || name.includes('pain')) leadData.condition = value;
@@ -239,6 +239,7 @@ app.post('/webhook/meta', async (req, res) => {
 
           leadData.id = leadgenId;
           leadData.firstName = leadData.firstName || 'Meta Lead';
+          leadData.lastName = leadData.lastName || '';
           await saveContact(leadData);
           await sendLeadEmail(leadData);
           console.log('New Meta lead saved:', leadData.firstName);
