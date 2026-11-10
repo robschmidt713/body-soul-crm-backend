@@ -130,6 +130,65 @@ async function sendLeadEmail(lead) {
   }
 }
 
+const DEFAULT_WELCOME_SMS_TEMPLATE = "Hi {firstName}, thanks for your enquiry with Body & Soul Chiropractic! We'll call you as soon as possible to help get you booked in for your $79 initial consult. We'll be calling from (07) 3608 8814. Alternatively, book online at https://bodyandsoulchiro.au/book-now/ and use code ONLINEOFFER to receive your $30 discount. Reply STOP to opt out.";
+
+function normaliseAuPhone(phone) {
+  if (!phone) return '';
+  let p = String(phone).replace(/[^\d+]/g, '');
+  if (!p) return '';
+  if (p.startsWith('00')) p = '+' + p.slice(2);
+  if (p.startsWith('+')) {
+    if (p.startsWith('+610')) p = '+61' + p.slice(4);
+    return p;
+  }
+  if (p.startsWith('61')) {
+    if (p.startsWith('610')) p = '61' + p.slice(3);
+    return '+' + p;
+  }
+  if (p.startsWith('0')) return '+61' + p.slice(1);
+  return '+61' + p;
+}
+
+function buildWelcomeSms(contact) {
+  const template = process.env.WELCOME_SMS_TEMPLATE || DEFAULT_WELCOME_SMS_TEMPLATE;
+  const raw = String(contact && contact.firstName ? contact.firstName : '').trim();
+  const useThere = !raw || raw.toLowerCase() === 'meta lead';
+  if (useThere) {
+    return template.replace(/Hi \{firstName\},/g, 'Hi there,').replace(/\{firstName\}/g, 'there');
+  }
+  return template.replace(/\{firstName\}/g, raw);
+}
+
+async function sendWelcomeSms(contact) {
+  try {
+    if (contact.welcomeSentAt) return;
+    const client = getTwilioClient();
+    const phone = normaliseAuPhone(contact.phone);
+    if (!client || !phone || !TWILIO_PHONE) return;
+
+    const body = buildWelcomeSms(contact);
+    const message = await client.messages.create({
+      body,
+      from: TWILIO_PHONE,
+      to: phone
+    });
+
+    if (!contact.messages) contact.messages = [];
+    contact.messages.push({
+      direction: 'outbound',
+      channel: 'sms',
+      body,
+      date: new Date().toISOString(),
+      sid: message.sid
+    });
+    contact.welcomeSentAt = new Date().toISOString();
+    await saveContact(contact);
+    console.log('Welcome SMS sent to', contact.firstName);
+  } catch (err) {
+    console.error('Welcome SMS failed:', err.message);
+  }
+}
+
 app.get('/', (req, res) => {
   res.json({ status: 'Body & Soul CRM backend running' });
 });
@@ -286,9 +345,20 @@ app.post('/webhook/meta', async (req, res) => {
           leadData.id = leadgenId;
           leadData.firstName = leadData.firstName || 'Meta Lead';
           leadData.lastName = leadData.lastName || '';
+
+          const existing = contactsCollection
+            ? await contactsCollection.findOne({ id: leadgenId })
+            : null;
+          if (existing) {
+            leadData.messages = existing.messages || [];
+            leadData.welcomeSentAt = existing.welcomeSentAt;
+            leadData.createdAt = existing.createdAt || leadData.createdAt;
+          }
+
           await saveContact(leadData);
           await sendLeadEmail(leadData);
           console.log('New Meta lead saved:', leadData.firstName);
+          if (!leadData.welcomeSentAt) await sendWelcomeSms(leadData);
         }
       }
     }
