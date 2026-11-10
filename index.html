@@ -322,7 +322,9 @@ async function syncFromBackend() {
     const res = await apiFetch('/contacts');
     if (!res.ok) return;
     const remote = await res.json();
+    if (!Array.isArray(remote)) return;
     contacts = remote;
+    saveData();
     renderAll();
   } catch (err) {
     console.warn('Sync failed:', err.message);
@@ -627,6 +629,7 @@ async function sendMessage(type, contact = null) {
     if (!phone) return alert('No phone number');
     if (!settings.backendUrl) return alert('Set Backend URL in Settings first');
 
+    let data = {};
     try {
       const res = await apiFetch('/send', {
         method: 'POST',
@@ -638,13 +641,23 @@ async function sendMessage(type, contact = null) {
           channel: type === 'whatsapp' ? 'whatsapp' : 'sms'
         })
       });
-      const data = await res.json();
+      data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Send failed');
       alert(`Message sent via ${type.toUpperCase()}!`);
     } catch (err) {
       alert('Failed to send: ' + err.message);
       return;
     }
+
+    const target = contacts.find(x => x.id === c.id) || c;
+    if (!target.messages) target.messages = [];
+    target.messages.push({
+      direction: 'outbound',
+      channel: type === 'whatsapp' ? 'whatsapp' : 'sms',
+      body: msg,
+      date: new Date().toISOString(),
+      sid: data.sid
+    });
   } else if (type === 'email') {
     if (!c.email) return alert('No email');
     const subject = encodeURIComponent(personalize(templates.emailSubject, c));
@@ -761,8 +774,7 @@ function setupEvents() {
       currentView = el.dataset.view;
       renderNav();
       if (currentView === 'messages') {
-        renderConversations();
-        renderTemplatesUI();
+        syncFromBackend().then(() => renderConversations());
       }
       renderAll();
     });
@@ -798,6 +810,8 @@ function setupEvents() {
         condition: document.getElementById('condition').value.trim(),
         tags: document.getElementById('tags').value.split(',').map(t => t.trim()).filter(Boolean),
         notes,
+        messages: existing?.messages || [],
+        welcomeSentAt: existing?.welcomeSentAt,
         createdAt: existing?.createdAt || new Date().toISOString()
       };
 

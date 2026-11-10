@@ -83,8 +83,31 @@ async function getContacts() {
   return await contactsCollection.find({}).toArray();
 }
 
+function messageKey(m) {
+  if (m && m.sid) return 'sid:' + m.sid;
+  return 'body:' + (m && m.direction ? m.direction : '') + '|' + (m && m.body ? m.body : '');
+}
+
+function mergeMessages(existing, incoming) {
+  const map = new Map();
+  for (const m of [...(existing || []), ...(incoming || [])]) {
+    if (!m) continue;
+    const k = messageKey(m);
+    const prev = map.get(k);
+    if (!prev || (m.sid && !prev.sid)) map.set(k, m);
+  }
+  return Array.from(map.values()).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+
 async function saveContact(contact) {
   if (!contactsCollection) return;
+  const existing = await contactsCollection.findOne({ id: contact.id });
+  if (existing) {
+    contact.messages = mergeMessages(existing.messages, contact.messages);
+    if (existing.welcomeSentAt && !contact.welcomeSentAt) {
+      contact.welcomeSentAt = existing.welcomeSentAt;
+    }
+  }
   const { _id, ...contactWithoutId } = contact;
   await contactsCollection.updateOne(
     { id: contact.id },
