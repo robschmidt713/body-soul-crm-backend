@@ -241,11 +241,13 @@ const TEMPLATE_KEY = 'bodySoulCRM_templates';
 const SETTINGS_KEY = 'bodySoulCRM_settings';
 
 let contacts = [];
+let DEFAULT_SMS;
 let templates = {
-  sms: "Hi {firstName}, thanks for your interest in Body & Soul Chiropractic! I'm Dr Rob. We help people with back, neck and spinal issues using gentle chiropractic and decompression. Would you like to book a free initial consultation? Reply YES or call us on 3608 8814.",
+  sms: "Hi {firstName}, thanks for your enquiry with Body & Soul Chiropractic! We'll call you as soon as possible to help get you booked in for your $79 initial consult. We'll be calling from (07) 3608 8814. Alternatively, book online at https://bodyandsoulchiro.au/book-now/ and use code ONLINEOFFER to receive your $30 discount. Reply STOP to opt out.",
   emailSubject: "Your enquiry with Body & Soul Chiropractic",
   emailBody: "Hi {firstName},\n\nThanks for reaching out via our ad. I'm Dr Rob Schmidt from Body & Soul Chiropractic in Brighton.\n\nWe specialise in helping people with spinal issues, back pain and decompression therapy.\n\nWould you like to book a complimentary consultation so we can see how we can help?\n\nReply to this email or call 3608 8814.\n\nWarm regards,\nDr Rob Schmidt\nBody & Soul Chiropractic"
 };
+DEFAULT_SMS = templates.sms;
 let settings = { autoPromptLeads: true, backendUrl: 'https://body-soul-crm-backend.onrender.com' };
 let currentView = 'dashboard';
 let pendingContact = null;
@@ -376,6 +378,7 @@ function saveData() {
 function loadTemplates() {
   const saved = localStorage.getItem(TEMPLATE_KEY);
   if (saved) templates = { ...templates, ...JSON.parse(saved) };
+  if (/free initial consult/i.test(templates.sms || '')) { templates.sms = DEFAULT_SMS; saveTemplates(); }
 }
 function saveTemplates() { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates)); }
 
