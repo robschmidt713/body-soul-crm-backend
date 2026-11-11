@@ -199,7 +199,7 @@ label { font-size: 0.8rem; color: var(--muted); }
         </div>
         <div id="messageButtons" class="msg-actions hidden">
           <button type="button" class="btn btn-success btn-sm" onclick="sendMessage('whatsapp')">Send WhatsApp</button>
-          <button type="button" class="btn btn-sm" onclick="sendMessage('sms')">Send SMS</button>
+          <button type="button" class="btn btn-sm" onclick="openSmsThread()">Send SMS</button>
           <button type="button" class="btn btn-secondary btn-sm" onclick="sendMessage('email')">Send Email</button>
         </div>
         <div class="actions">
@@ -503,7 +503,7 @@ function renderContacts() {
             <td>${(c.tags||[]).map(t => `<span class="tag">${t}</span>`).join('')}</td>
             <td>
               <button class="btn btn-sm btn-secondary" onclick="editContact('${c.id}')">Edit</button>
-              <button class="btn btn-sm" onclick="quickSend('${c.id}', 'sms')">SMS</button>
+              <button class="btn btn-sm" onclick="openConversation('${c.id}')">SMS</button>
               <button class="btn btn-sm btn-danger" onclick="deleteContact('${c.id}')">Del</button>
             </td>
           </tr>
@@ -754,6 +754,13 @@ async function sendReply(contactId) {
   } finally {
     input.disabled = false;
   }
+}
+
+function openSmsThread() {
+  const c = pendingContact;
+  if (!c || !c.id) return alert('Save the contact first');
+  closeModal();
+  openConversation(c.id);
 }
 
 function quickSend(id, type) {
