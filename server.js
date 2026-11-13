@@ -80,7 +80,9 @@ async function connectDB() {
 
 async function getContacts() {
   if (!contactsCollection) return [];
-  return await contactsCollection.find({}).toArray();
+  const list = await contactsCollection.find({}).toArray();
+  for (const c of list) if (Array.isArray(c.messages)) c.messages = dedupeMessages(c.messages);
+  return list;
 }
 
 function messageKey(m) {
@@ -96,7 +98,19 @@ function mergeMessages(existing, incoming) {
     const prev = map.get(k);
     if (!prev || (m.sid && !prev.sid)) map.set(k, m);
   }
-  return Array.from(map.values()).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  return dedupeMessages(Array.from(map.values()));
+}
+
+// Drop sid-less outbound copies that the browser saved alongside the real sent
+// message (same body, within 60 seconds of a message that has a Twilio sid).
+function dedupeMessages(list) {
+  const msgs = (list || []).filter(Boolean);
+  const withSid = msgs.filter(m => m.sid && m.direction === 'outbound');
+  return msgs.filter(m => {
+    if (m.sid || m.direction !== 'outbound') return true;
+    const t = Date.parse(m.date || '') || 0;
+    return !withSid.some(o => o.body === m.body && Math.abs((Date.parse(o.date || '') || 0) - t) <= 60000);
+  }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 }
 
 async function saveContact(contact) {

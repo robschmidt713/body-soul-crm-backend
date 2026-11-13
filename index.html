@@ -632,6 +632,8 @@ async function sendMessage(type, contact = null) {
     if (!phone) return alert('No phone number');
     if (!settings.backendUrl) return alert('Set Backend URL in Settings first');
 
+    if (sendingMessage) return;
+    sendingMessage = true;
     let data = {};
     try {
       const res = await apiFetch('/send', {
@@ -649,18 +651,12 @@ async function sendMessage(type, contact = null) {
       alert(`Message sent via ${type.toUpperCase()}!`);
     } catch (err) {
       alert('Failed to send: ' + err.message);
+      sendingMessage = false;
       return;
     }
+    sendingMessage = false;
 
-    const target = contacts.find(x => x.id === c.id) || c;
-    if (!target.messages) target.messages = [];
-    target.messages.push({
-      direction: 'outbound',
-      channel: type === 'whatsapp' ? 'whatsapp' : 'sms',
-      body: msg,
-      date: new Date().toISOString(),
-      sid: data.sid
-    });
+    await syncFromBackend();
   } else if (type === 'email') {
     if (!c.email) return alert('No email');
     const subject = encodeURIComponent(personalize(templates.emailSubject, c));
@@ -710,7 +706,7 @@ async function openConversation(id) {
         <div style="flex:1;overflow-y:auto;padding:16px" id="msgHistory"></div>
         <div style="padding:12px;border-top:1px solid #333;display:flex;gap:8px">
           <input id="replyText" placeholder="Type a message..." style="flex:1;padding:10px;border-radius:6px;border:1px solid #444;background:#111;color:#fff">
-          <button class="btn btn-sm" onclick="sendReply('${c.id}')">Send</button>
+          <button class="btn btn-sm" id="replySendBtn" onclick="sendReply('${c.id}')">Send</button>
         </div>
       </div>
     </div>
@@ -726,6 +722,9 @@ async function openConversation(id) {
   }, 4000);
 }
 
+let sendingReply = false;
+let sendingMessage = false;
+
 async function sendReply(contactId) {
   const input = document.getElementById('replyText');
   const text = input.value.trim();
@@ -733,6 +732,10 @@ async function sendReply(contactId) {
   const c = contacts.find(x => x.id === contactId);
   if (!c || !c.phone) return alert('No phone number');
 
+  if (sendingReply) return;
+  sendingReply = true;
+  const sendBtn = document.getElementById('replySendBtn');
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
   input.disabled = true;
   try {
     const res = await apiFetch('/send', {
@@ -743,16 +746,15 @@ async function sendReply(contactId) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Send failed');
 
-    if (!c.messages) c.messages = [];
-    c.messages.push({ direction: 'outbound', channel: 'sms', body: text, date: new Date().toISOString() });
-    saveData();
-    saveContactToBackend(c);
+    input.value = '';
     document.querySelector('[style*="position:fixed"]').remove();
     openConversation(contactId);
   } catch (err) {
     alert('Failed: ' + err.message);
   } finally {
+    sendingReply = false;
     input.disabled = false;
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
   }
 }
 
